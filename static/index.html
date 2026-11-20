@@ -2731,29 +2731,49 @@
         el.tooltip.setAttribute("aria-hidden", "true");
       }
 
+      function buildGroupedOptionsHtml(options) {
+        const groups = [];
+        const byVendor = new Map();
+        options.forEach((m) => {
+          const vendor = m.vendor || "Models";
+          if (!byVendor.has(vendor)) {
+            const arr = [];
+            byVendor.set(vendor, arr);
+            groups.push({ vendor: vendor, items: arr });
+          }
+          byVendor.get(vendor).push(m);
+        });
+        return groups.map((g) =>
+          '<optgroup label="' + escapeHtml(g.vendor) + '">' +
+            g.items.map((m) =>
+              '<option value="' + escapeHtml(m.id) + '">' + escapeHtml(m.label) + "</option>"
+            ).join("") +
+          "</optgroup>"
+        ).join("");
+      }
+
       function renderModelChips() {
         if (!state.targetOptions.length) {
           state.targetOptions = [
             { id: "deepseek-ai/deepseek-v4.1-flash-maas", label: "DeepSeek v4.1 Flash", vendor: "DeepSeek" },
             { id: "openai/gpt-oss-120b-maas", label: "OpenAI GPT-OSS 120B", vendor: "OpenAI" },
-            { id: "gemini-3.5-flash", label: "Gemini 3.5 Flash", vendor: "Google" },
-            { id: "gemini-3.1-flash-lite", label: "Gemini 3.1 Flash-Lite", vendor: "Google" }
+            { id: "zai-org/glm-5.2-maas", label: "Z.ai GLM 5.2", vendor: "Z.ai" },
+            { id: "google/gemma-4-26b-a4b-it-maas", label: "Gemma 4 26B", vendor: "Google Gemma" },
+            { id: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro", vendor: "Google Gemini" },
+            { id: "gemini-3.8-flash", label: "Gemini 3.8 Flash", vendor: "Google Gemini" },
+            { id: "gemini-3.7-flash", label: "Gemini 3.7 Flash", vendor: "Google Gemini" },
+            { id: "gemini-3.6-flash", label: "Gemini 3.6 Flash", vendor: "Google Gemini" },
+            { id: "gemini-3.5-flash", label: "Gemini 3.5 Flash", vendor: "Google Gemini" },
+            { id: "gemini-3.5-flash-lite", label: "Gemini 3.5 Flash-Lite", vendor: "Google Gemini" },
+            { id: "gemini-3.1-flash-lite", label: "Gemini 3.1 Flash-Lite", vendor: "Google Gemini" },
+            { id: "gemini-3-flash-preview", label: "Gemini 3 Flash Preview", vendor: "Google Gemini" }
           ];
         }
         if (!state.judgeOptions.length) {
-          state.judgeOptions = [
-            { id: "gemini-3.1-pro-preview", label: "Gemini 3.1 Pro", vendor: "Google" },
-            { id: "gemini-3.7-flash", label: "Gemini 3.7 Flash", vendor: "Google" },
-            { id: "gemini-3.8-flash", label: "Gemini 3.8 Flash", vendor: "Google" },
-            { id: "gemini-3.5-flash", label: "Gemini 3.5 Flash", vendor: "Google" }
-          ];
+          state.judgeOptions = state.targetOptions.slice();
         }
-        el.selectTarget.innerHTML = state.targetOptions
-          .map((m) => '<option value="' + escapeHtml(m.id) + '">' + escapeHtml(m.label) + "</option>")
-          .join("");
-        el.selectJudge.innerHTML = state.judgeOptions
-          .map((m) => '<option value="' + escapeHtml(m.id) + '">' + escapeHtml(m.label) + "</option>")
-          .join("");
+        el.selectTarget.innerHTML = buildGroupedOptionsHtml(state.targetOptions);
+        el.selectJudge.innerHTML = buildGroupedOptionsHtml(state.judgeOptions);
 
         if (state.selectedTarget) el.selectTarget.value = state.selectedTarget;
         if (state.selectedJudge) el.selectJudge.value = state.selectedJudge;
