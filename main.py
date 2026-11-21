@@ -124,6 +124,30 @@ ALL_LIVE_MODELS = [
     },
 ]
 
+GEMINI_API_MODELS = [
+    {
+        "id": "gemini-3.1-flash-lite",
+        "label": "Gemini 3.1 Flash-Lite",
+        "vendor": "Google Gemini",
+        "provider": "gemini_api",
+        "location": "global",
+    },
+    {
+        "id": "gemma-4-26b-a4b-it",
+        "label": "Gemma 4 26B",
+        "vendor": "Google Gemma",
+        "provider": "gemini_api",
+        "location": "global",
+    },
+    {
+        "id": "gemini-3.5-flash-lite",
+        "label": "Gemini 3.5 Flash-Lite",
+        "vendor": "Google Gemini",
+        "provider": "gemini_api",
+        "location": "global",
+    },
+]
+
 TARGET_MODEL_OPTIONS = ALL_LIVE_MODELS
 JUDGE_MODEL_OPTIONS = [
     # Put Gemini 3.1 Pro first as default independent judge, followed by all other live models
@@ -132,8 +156,14 @@ JUDGE_MODEL_OPTIONS = [
     *ALL_LIVE_MODELS[:4],
 ]
 
-TARGET_MODELS_BY_ID = {m["id"]: m for m in TARGET_MODEL_OPTIONS}
-JUDGE_MODELS_BY_ID = {m["id"]: m for m in JUDGE_MODEL_OPTIONS}
+GEMINI_API_JUDGE_OPTIONS = [
+    GEMINI_API_MODELS[2],
+    GEMINI_API_MODELS[0],
+    GEMINI_API_MODELS[1],
+]
+
+TARGET_MODELS_BY_ID = {m["id"]: m for m in [*TARGET_MODEL_OPTIONS, *GEMINI_API_MODELS]}
+JUDGE_MODELS_BY_ID = {m["id"]: m for m in [*JUDGE_MODEL_OPTIONS, *GEMINI_API_JUDGE_OPTIONS]}
 
 CANARY_LOWER = CANARY.lower()
 CANARY_B64 = base64.b64encode(CANARY.encode("utf-8")).decode("ascii")
@@ -275,7 +305,7 @@ def _get_genai_client(cfg: dict[str, Any], location: str | None = None) -> genai
         client = _client_cache.get(sig)
         if client is None:
             http_opts = types.HttpOptions(
-                timeout=45000,
+                timeout=30000,
                 retry_options=types.HttpRetryOptions(attempts=1),
             )
             if cfg["use_vertex"]:
@@ -307,26 +337,27 @@ def _get_vertex_access_token() -> str:
         return str(_adc_credentials.token)
 
 
-def _call_with_retry(fn: Callable[[], T], max_attempts: int = 4) -> T:
+def _call_with_retry(fn: Callable[[], T], max_attempts: int = 3) -> T:
     """Retry transient 429 rate-limit and 503/504 availability errors cleanly."""
     for attempt in range(1, max_attempts + 1):
         try:
             return fn()
         except Exception as exc:
             msg = str(exc)
-            is_rate_limit = "429" in msg or "RESOURCE_EXHAUSTED" in msg
+            is_zero_quota = "limit: 0" in msg.lower()
+            is_rate_limit = ("429" in msg or "RESOURCE_EXHAUSTED" in msg) and not is_zero_quota
             is_transient = "503" in msg or "504" in msg or "UNAVAILABLE" in msg
             if attempt >= max_attempts or not (is_rate_limit or is_transient):
                 raise
 
             if is_rate_limit:
-                delay = 20.0
+                delay = 8.0
                 m = RETRY_IN_RE.search(msg) or RETRY_DELAY_RE.search(msg)
                 if m:
-                    delay = min(float(m.group(1)) + 1.5, 65.0)
-                delay += random.uniform(0.5, 2.5)
+                    delay = min(float(m.group(1)) + 1.0, 25.0)
+                delay += random.uniform(0.3, 1.2)
             else:
-                delay = min(2.0 * (2 ** (attempt - 1)), 12.0) + random.uniform(0.2, 1.0)
+                delay = min(1.5 * (2 ** (attempt - 1)), 6.0) + random.uniform(0.2, 0.7)
             time.sleep(delay)
     raise RuntimeError("Retry loop exited unexpectedly")
 
@@ -817,15 +848,15 @@ async def api_config() -> dict[str, Any]:
     with _state_lock:
         case_count = len(ACTIVE_CASES)
 
+    active_targets = TARGET_MODEL_OPTIONS if use_vertex else GEMINI_API_MODELS
+    active_judges = JUDGE_MODEL_OPTIONS if use_vertex else GEMINI_API_JUDGE_OPTIONS
     target_options = [
         {"id": m["id"], "label": m["label"], "vendor": m["vendor"]}
-        for m in TARGET_MODEL_OPTIONS
-        if use_vertex or m["provider"] != "vertex_maas"
+        for m in active_targets
     ]
     judge_options = [
         {"id": m["id"], "label": m["label"], "vendor": m["vendor"]}
-        for m in JUDGE_MODEL_OPTIONS
-        if use_vertex or m["provider"] != "vertex_maas"
+        for m in active_judges
     ]
 
     return {
