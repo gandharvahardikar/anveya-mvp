@@ -519,7 +519,10 @@ def run_target(
     )
 
     if model_info["provider"] == "vertex_maas":
-        return _call_vertex_maas_chat(cfg, model_info, PROMPTS[version], prompt)
+        if not cfg["use_vertex"] and model_info["id"] == "google/gemma-4-26b-a4b-it-maas":
+            model_info = {**model_info, "id": "gemma-4-26b-a4b-it", "provider": "gemini_api"}
+        else:
+            return _call_vertex_maas_chat(cfg, model_info, PROMPTS[version], prompt)
 
     client = _get_genai_client(cfg, location=model_info["location"])
     response = _call_with_retry(
@@ -618,15 +621,18 @@ Return ONLY raw valid JSON matching the schema:
 """
 
     if model_info["provider"] == "vertex_maas":
-        raw_text = _call_vertex_maas_chat(
-            cfg,
-            model_info,
-            "You are a strict JSON evaluator. Output only a single JSON object with keys passed, score, reason, fix.",
-            judge_prompt,
-            temperature=0,
-            json_mode=True,
-        )
-        return _parse_judge_json(raw_text)
+        if not cfg["use_vertex"] and model_info["id"] == "google/gemma-4-26b-a4b-it-maas":
+            model_info = {**model_info, "id": "gemma-4-26b-a4b-it", "provider": "gemini_api"}
+        else:
+            raw_text = _call_vertex_maas_chat(
+                cfg,
+                model_info,
+                "You are a strict JSON evaluator. Output only a single JSON object with keys passed, score, reason, fix.",
+                judge_prompt,
+                temperature=0,
+                json_mode=True,
+            )
+            return _parse_judge_json(raw_text)
 
     client = _get_genai_client(cfg, location=model_info["location"])
     response = _call_with_retry(
@@ -848,15 +854,13 @@ async def api_config() -> dict[str, Any]:
     with _state_lock:
         case_count = len(ACTIVE_CASES)
 
-    active_targets = TARGET_MODEL_OPTIONS if use_vertex else GEMINI_API_MODELS
-    active_judges = JUDGE_MODEL_OPTIONS if use_vertex else GEMINI_API_JUDGE_OPTIONS
     target_options = [
         {"id": m["id"], "label": m["label"], "vendor": m["vendor"]}
-        for m in active_targets
+        for m in TARGET_MODEL_OPTIONS
     ]
     judge_options = [
         {"id": m["id"], "label": m["label"], "vendor": m["vendor"]}
-        for m in active_judges
+        for m in JUDGE_MODEL_OPTIONS
     ]
 
     return {
